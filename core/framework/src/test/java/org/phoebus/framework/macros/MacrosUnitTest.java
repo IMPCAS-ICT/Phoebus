@@ -11,10 +11,10 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.nullValue;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
 import org.junit.Test;
+import org.phoebus.framework.macros.MacroHandler.DecomposedMacroValue;
 
 /** JUnit test of macro handling
  *  @author Kay Kasemir
@@ -57,12 +57,15 @@ public class MacrosUnitTest
         assertThat(MacroHandler.findClosingBrace("${X\\(XX}", 1), equalTo(7));
         assertThat(MacroHandler.findClosingBrace("$(XXX)", 1), equalTo(5));
         assertThat(MacroHandler.findClosingBrace("$(X(X)X)", 1), equalTo(7));
+        assertThat(MacroHandler.findClosingBrace("$(X(XX", 1), equalTo(-1));
         assertThat(MacroHandler.findClosingBrace("$(X{X}X)", 1), equalTo(7));
         assertThat(MacroHandler.findClosingBrace("$(X(X\\))X)", 1), equalTo(9));
         assertThat(MacroHandler.findClosingBrace("${XXX}", 1), equalTo(5));
         assertThat(MacroHandler.findClosingBrace("${XXX\\}}", 1), equalTo(7));
         assertThat(MacroHandler.findClosingBrace("${XXX)", 1), equalTo(-1));
         assertThat(MacroHandler.findClosingBrace("$(XXX}", 1), equalTo(-1));
+        assertThat(MacroHandler.findClosingBrace("$(XXX}", 5), equalTo(-1));
+        assertThat(MacroHandler.findClosingBrace("$(XXX}", 6), equalTo(-1));
     }
 
     /** Test recursive macro error
@@ -134,6 +137,7 @@ public class MacrosUnitTest
         assertThat(MacroHandler.replace(macros, "Plain Text"), equalTo("Plain Text"));
         assertThat(MacroHandler.replace(macros, "Nothing for ${S} <-- this one"), equalTo("Nothing for ${S} <-- this one"));
         assertThat(MacroHandler.replace(macros, "${NOT_CLOSED"), equalTo("${NOT_CLOSED"));
+        assertThat(MacroHandler.replace(macros, "$"), equalTo("$"));
     }
 
     /** Test macros with default values
@@ -216,5 +220,42 @@ public class MacrosUnitTest
         {
             assertThat(ex.getMessage(), containsString(/* [Rr] */ "ecursive"));
         }
+    }
+
+    @Test
+    public void testMacroOverride1() throws Exception{
+        Macros macros = new Macros();
+        macros.add("MACRONAME", "$(MACRONAME=macroValue)");
+        assertEquals("macroValue", MacroHandler.replace(macros, "$(MACRONAME)"));
+        assertEquals("macroValue", MacroHandler.replace(macros, "$(MACRONAME=whatever)"));
+    }
+
+    @Test
+    public void testMacroOverride2() throws Exception{
+        Macros macros = new Macros();
+        macros.add("MACRONAME", "$(MACRONAME=$(ANOTHER_MACRONAME))");
+        macros.add("ANOTHER_MACRONAME", "anotherValue");
+        assertEquals("anotherValue", MacroHandler.replace(macros, "$(MACRONAME)"));
+    }
+
+    @Test
+    public void testMacroOverride3() throws Exception{
+        Macros macros = new Macros();
+        macros.add("MACRONAME", "$(MACRONAME=)");
+        assertEquals("", MacroHandler.replace(macros, "$(MACRONAME)"));
+    }
+
+    @Test
+    public void testMacroOverride4() throws Exception{
+        Macros macros = new Macros();
+        macros.add("MACRONAME", "$(MACRONAME= macro value )");
+        assertEquals("macro value", MacroHandler.replace(macros, "$(MACRONAME)"));
+    }
+
+    @Test(expected = Exception.class)
+    public void testInvalidMacroOverride1() throws Exception{
+        Macros macros = new Macros();
+        macros.add("MACRONAME", "$(MACRONAME)");
+        MacroHandler.replace(macros, "$(MACRONAME)");
     }
 }

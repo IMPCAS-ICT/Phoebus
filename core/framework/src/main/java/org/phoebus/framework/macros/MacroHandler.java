@@ -61,6 +61,7 @@ public class MacroHandler
     {
         if (recursions > MAX_RECURSION)
             throw new Exception("Recursive macro " + input + ". Values: " + macros);
+
         // Recursion and default values:
         // Default values provide a possible way to resolve recursive macros. If recursion
         // is detected, the default value could be used.
@@ -68,44 +69,28 @@ public class MacroHandler
         // default value. For example, replacing $(S=a) with the macro S=$(S) would throw an
         // error, since the expected default value, "a", is overwritten on the first recursion.
 
-        // Find first un-escaped $(.. or ${..
-        int start = input.indexOf('$',  from);
-        while (start > 0 && input.charAt(start-1) == '\\')
-            start = input.indexOf('$', start+1);
+        DecomposedMacroValue decomposedMacroValue = new DecomposedMacroValue(input, from);
 
-        // Short cut if there is nothing to replace
-        if (start < 0)
+        if(decomposedMacroValue.macroName == null){
             return input;
-
-        // Is there a ( or { ?
-        if (start+1 >= input.length())
-            return input;
-
-        // Find end of $(..) or ${..}
-        final int end = findClosingBrace(input, start+1);
-        if (end < 0)
-            return input;
-
-        // Find macro name
-        String name = input.substring(start+2, end);
-        int sep = name.indexOf('=');
-        final String def_val;
-        if (sep > 0)
-        {
-            def_val = name.substring(sep+1);
-            name = name.substring(0, sep);
         }
-        else
-            def_val = null;
 
         // Resolve
-        if (Macros.MACRO_NAME_PATTERN.matcher(name).matches())
+        if (Macros.MACRO_NAME_PATTERN.matcher(decomposedMacroValue.macroName).matches())
         {
-            final String value = macros.getValue(name);
-            if (value != null || def_val != null)
+            final String value = macros.getValue(decomposedMacroValue.macroName);
+
+            DecomposedMacroValue decomposedValue = new DecomposedMacroValue(value);
+
+            if(decomposedMacroValue.macroName.equals(decomposedValue.macroName)){
+                return replace(recursions + 1, macros, decomposedValue.defaultValue != null ? decomposedValue.defaultValue : value, 0);
+            }
+            else if(value != null || decomposedMacroValue.defaultValue != null)
             {
                 // Replace macro in input, removing the '$(' resp. ')'
-                final String result = input.substring(0, start) + (value != null ? value : def_val) + input.substring(end+1);
+                final String result = input.substring(0, decomposedMacroValue.start) +
+                        (value != null ? value : decomposedMacroValue.defaultValue) +
+                        input.substring(decomposedMacroValue.end + 1);
                 // Text has now changed.
                 // Subsequent calls to find() would return indices for the original text
                 // which are no longer valid for the changed text
@@ -115,7 +100,7 @@ public class MacroHandler
             }
         }
         // Leave macro unresolved, continue with remaining input
-        return replace(recursions + 1, macros, input, start + 2);
+        return replace(recursions + 1, macros, input, decomposedMacroValue.start + 2);
     }
 
     /** @param input Input that might contain '(..)' or '{..}'
@@ -157,5 +142,65 @@ public class MacroHandler
         }
 
         return -1;
+    }
+
+    /**
+     * Decomposes a macro value into name and default value (if present).
+     * Main justification is to avoid duplication of macro parser code.
+     */
+    public static class DecomposedMacroValue{
+
+        private String macroName;
+        private String defaultValue;
+        private int start;
+        private int end;
+
+        public DecomposedMacroValue(String input){
+            parse(input, 0);
+        }
+
+        public DecomposedMacroValue(String input, int from){
+            parse(input, from);
+        }
+
+        private void parse(String input, int from){
+            if(input == null){
+                return;
+            }
+            // Find first un-escaped $(.. or ${..
+            start = input.indexOf('$', from);
+            while (start > 0 && input.charAt(start-1) == '\\') {
+                start = input.indexOf('$', start + 1);
+            }
+
+            // Short cut if there is nothing to replace
+            if (start < 0 || start + 1 >= input.length()){
+                defaultValue = input;
+                return;
+            }
+
+            // Is there a ( or { ?
+            if (start + 1 >= input.length()) {
+                defaultValue = input;
+                return;
+            }
+
+            // Find end of $(..) or ${..}
+            end = findClosingBrace(input, start+1);
+            if (end < 0){
+                defaultValue = input;
+                return;
+            }
+
+            // Find macro name
+            String name = input.substring(start + 2, end);
+            int sep = name.indexOf('=');
+            if (sep > 0)
+            {
+                defaultValue = name.substring(sep + 1).trim();
+                name = name.substring(0, sep);
+            }
+            macroName = name;
+        }
     }
 }
